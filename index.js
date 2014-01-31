@@ -18,6 +18,7 @@ var arm = function(){
 
 var takeoff = function(){
   if (armed && !flying){
+    armed = false;
     flying = true;
     console.log('takeoff');
     // copter takeoff
@@ -27,47 +28,71 @@ var takeoff = function(){
 
 var land = function(){
   flying = false;
-  armed = false;
   console.log('\nLanding!\n');
   drone.land();
   // land the copter
   // wait for some time before allowing re-arm
 }
 
-var scaleMove = 5;
+var maxPitch = 0.5;
+var pitchBuffer = 0.15;
+
+var maxRoll = 0.5;
+var rollBuffer = 0.15;
+
+var maxYaw = 0.5;
+var yawBuffer = 0.15;
+
 var move = function(pitch, roll, yaw, thrust){
-  console.log('pitch: ' + pitch + 'roll: ' + roll + ' yaw: ' + yaw + ' thrust: ' + thrust);
+  //console.log('pitch: ' + pitch + 'roll: ' + roll + ' yaw: ' + yaw + ' thrust: ' + thrust);
+  if ((pitch < pitchBuffer) && (pitch > -pitchBuffer)) pitch = 0;
+  if ((roll < rollBuffer) && (roll > -rollBuffer)) roll = 0;
+  if ((yaw < yawBuffer) && (yaw > -yawBuffer)) yaw = 0;
+
   if (pitch < 0){
-    var pitchFront = Math.abs(pitch/scaleMove);
+    var pitchValue = Math.pow(40,(-pitch-1));
+    var pitchFront = pitchValue > maxPitch ? maxPitch : pitchValue;
     console.log('forward ', pitchFront);
     drone.front(pitchFront)
   }
   if (pitch > 0){
-    var pitchBack = Math.abs(pitch/scaleMove);
+    var pitchValue = Math.pow(40,(pitch-1));
+    var pitchBack = pitchValue > maxPitch ? maxPitch : pitchValue;
     console.log('back ', pitchBack);
     drone.back(pitchBack);
   }
 
   if (roll < 0){
-    var pitchRight = Math.abs(roll/scaleMove);
-    console.log('right', pitchRight);
-    drone.right(pitchRight);
+    var rollValue = Math.pow(40,(-roll-1));
+    var rollRight = rollValue > maxRoll ? maxRoll : rollValue;
+    console.log('right', rollRight);
+    drone.right(rollRight);
   }
   if (roll > 0){
-    var pitchLeft = Math.abs(roll/scaleMove);
-    console.log('left', pitchLeft);
-    drone.left(pitchLeft);
+    var rollValue = Math.pow(40,(roll-1));
+    var rollLeft = rollValue > maxRoll ? maxRoll : rollValue;
+    console.log('left', rollLeft);
+    drone.left(rollLeft);
   }
 
   if (yaw < 0){
-    var yawLeft = Math.abs(yaw/10);
+    var yawValue = (Math.pow(40,(-yaw-1)));
+    var yawLeft = yawValue > maxYaw ? maxYaw : yawValue;
     console.log('yawLeft', yawLeft);
     drone.counterClockwise(yawLeft);
   }
   if (yaw > 0){
-    var yawRight = Math.abs(yaw/10);
+    var yawValue = Math.abs(Math.pow(40,(yaw-1)));
+    var yawRight = yawValue > maxYaw ? maxYaw : yawValue;
     console.log('yawRight', yawRight);
     drone.clockwise(yawRight);
+  }
+  if (thrust > 200){
+    console.log('going up');
+    drone.up(0.5); 
+  } else if (thrust < 100) {
+    console.log('going down');
+    drone.down(0.5);
   }
 }
 
@@ -138,20 +163,24 @@ var dealWithHands = function(handsArr){
   // require ONE hand only, and four fingers when the drone is flying in 
   // order to give it commands
   if ((handsArr.length == 1) && flying && handsArr[0].fingers.length >= 4){
-    for (var i = 0; i<handsArr.length; i++){
-      //console.log(handsArr[0].palmPosition);
-      // pitch, roll, yaw, thrust
-      var pitch = handsArr[0].pitch() / 2;
-      var roll = handsArr[0].roll() / 2;
-      var yaw = handsArr[0].yaw() / 2;
+      var pitch = handsArr[0].pitch();
+      var roll = handsArr[0].roll();
+      var yaw = 0;
       var thrust = handsArr[0].palmPosition[1];
       move(pitch, roll, yaw, thrust);
-    }
+  }
+
+  // double hand control
+  if ((handsArr.length == 2) && flying && (handsArr[0].fingers.length >= 4) && (handsArr[1].fingers.length >= 4)){
+      var pitch = handsArr[0].pitch();
+      var roll = handsArr[0].roll();
+      var yaw = handsArr[1].yaw();
+      var thrust = handsArr[1].palmPosition[1];
+      move(pitch, roll, yaw, thrust);
   }
 }
 
 controller.on('frame', function(newFrame){
-  //console.log(frame);
   frame = newFrame;
   for (var i = 0; i < frame.gestures.length; i++){
     var gesture = frame.gestures[i]; 
