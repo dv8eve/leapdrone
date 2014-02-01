@@ -2,33 +2,58 @@ var Leap = require('leapjs');
 var drone = require('ar-drone').createClient();
 var controller = new Leap.Controller({enableGestures:true});
 var figlet = require('node-figlet');
+var charm = require('charm')();
+
+charm.pipe(process.stdout);
+charm.reset();
 
 var armed = false,
     flying = false,
     armWait = 5000,
     armCount = 0,
-    gesturelifetime = 3,
+    gesturelifetime = 3
+
     activeGestures = {},
-    frame;
+    frame = {},
+    charge = 0;
+    debug = process.argv[2] == '--debug' ? true : false;
 
 drone.disableEmergency();
+drone.config('general:navdata_demo', 'TRUE');
+
+drone.on('batteryChange', function(data){
+  if (data) {
+    charge = data;
+    charm.position(0,38).erase('line');
+    charm.write('Battery: ' + charge.toString());
+  }
+});
+
+drone.on('navdata', function(navData){
+  var demoData = navData;
+})
+
 var arm = function(){
   armed = true;
+  charm.erase('line');
+  charm.position(0,40).write('Armed.');
 }
 
 var takeoff = function(){
   if (armed && !flying){
     armed = false;
-    flying = true;
-    console.log('takeoff');
+    charm.position(0,40).erase('line').write('Launching!');
     // copter takeoff
-    drone.takeoff();
+    if (debug) flying = true;
+    drone.takeoff(function(){
+      flying = true;
+    });
   }
 }
 
 var land = function(){
   flying = false;
-  console.log('\nLanding!\n');
+  charm.position(0,40).erase('line').write('Landing');
   drone.land();
   // land the copter
   // wait for some time before allowing re-arm
@@ -45,55 +70,70 @@ var yawBuffer = 0.15;
 
 var move = function(pitch, roll, yaw, thrust){
   //console.log('pitch: ' + pitch + 'roll: ' + roll + ' yaw: ' + yaw + ' thrust: ' + thrust);
-  if ((pitch < pitchBuffer) && (pitch > -pitchBuffer)) pitch = 0;
-  if ((roll < rollBuffer) && (roll > -rollBuffer)) roll = 0;
-  if ((yaw < yawBuffer) && (yaw > -yawBuffer)) yaw = 0;
-
+  var statusText = "";
+  if ((pitch < pitchBuffer) && (pitch > -pitchBuffer)){
+    statusText += "| -     "
+    pitch = 0;
+  } else
   if (pitch < 0){
     var pitchValue = Math.pow(40,(-pitch-1));
     var pitchFront = pitchValue > maxPitch ? maxPitch : pitchValue;
-    console.log('forward ', pitchFront);
+    statusText += "| ↑ " + pitchFront.toFixed(2);
     drone.front(pitchFront)
-  }
+  } else
   if (pitch > 0){
     var pitchValue = Math.pow(40,(pitch-1));
     var pitchBack = pitchValue > maxPitch ? maxPitch : pitchValue;
-    console.log('back ', pitchBack);
+    statusText += "| ↓ " + pitchBack.toFixed(2);
     drone.back(pitchBack);
   }
 
+  if ((roll < rollBuffer) && (roll > -rollBuffer)){
+    statusText += " | -     ";
+    roll = 0;
+  } else
   if (roll < 0){
     var rollValue = Math.pow(40,(-roll-1));
     var rollRight = rollValue > maxRoll ? maxRoll : rollValue;
-    console.log('right', rollRight);
+    statusText += " | → " + rollRight.toFixed(2);
     drone.right(rollRight);
-  }
+  } else
   if (roll > 0){
     var rollValue = Math.pow(40,(roll-1));
     var rollLeft = rollValue > maxRoll ? maxRoll : rollValue;
-    console.log('left', rollLeft);
+    statusText += " | ← " + rollLeft.toFixed(2);
     drone.left(rollLeft);
   }
 
+  if ((yaw < yawBuffer) && (yaw > -yawBuffer)){
+    statusText += " | -     ";
+    yaw = 0;
+  } else
   if (yaw < 0){
     var yawValue = (Math.pow(40,(-yaw-1)));
     var yawLeft = yawValue > maxYaw ? maxYaw : yawValue;
-    console.log('yawLeft', yawLeft);
+    statusText += " | ↺  " + yawLeft.toFixed(2);
     drone.counterClockwise(yawLeft);
-  }
+  } else
   if (yaw > 0){
     var yawValue = Math.abs(Math.pow(40,(yaw-1)));
     var yawRight = yawValue > maxYaw ? maxYaw : yawValue;
-    console.log('yawRight', yawRight);
+    statusText += " | ↻ " + yawRight.toFixed(2);
     drone.clockwise(yawRight);
-  }
+  } 
+
   if (thrust > 200){
-    console.log('going up');
+    statusText += " | ↥ ";
     drone.up(0.5); 
   } else if (thrust < 100) {
-    console.log('going down');
+    statusText += " | ↧ ";
     drone.down(0.5);
+  } else {
+    statusText += " | - ";
   }
+
+  statusText += " | " + charge + " |";
+  charm.position(0,40).erase('line').write(statusText);
 }
 
 var updateGestures = function(){
@@ -104,7 +144,6 @@ var updateGestures = function(){
       age /= 1000000;
 
       if (age >= gesturelifetime){
-        console.log('clear', gesture.type);
         activeGestures[gesture.type] = null;
         delete activeGestures[gesture.type];
       }
@@ -115,7 +154,6 @@ var updateGestures = function(){
 var onCircle = function( gesture ){
   if (!activeGestures[gesture.type] || activeGestures[gesture.type] == null){
     gesture['time'] = frame.timestamp;
-    console.log(gesture.type, gesture.radius);
     activeGestures[gesture.type] = gesture;
   }
 }
@@ -123,7 +161,6 @@ var onCircle = function( gesture ){
 var onSwipe = function( gesture ){
   if (!activeGestures[gesture.type] || activeGestures[gesture.type] == null){
     gesture['time'] = frame.timestamp;
-    console.log(gesture.type);
     activeGestures[gesture.type] = gesture;
   }
 }
@@ -131,7 +168,6 @@ var onSwipe = function( gesture ){
 var onScreenTap = function( gesture ){
   if (!activeGestures[gesture.type] || activeGestures[gesture.type] == null){
     gesture['time'] = frame.timestamp;
-    console.log(gesture.type);
     activeGestures[gesture.type] = gesture;
   }
 }
@@ -139,7 +175,6 @@ var onScreenTap = function( gesture ){
 var onKeyTap = function( gesture ){
   if (!activeGestures[gesture.type] || activeGestures[gesture.type] == null){
     gesture['time'] = frame.timestamp;
-    console.log(gesture.type);
     activeGestures[gesture.type] = gesture;
     if (flying){
       land();
@@ -150,9 +185,9 @@ var onKeyTap = function( gesture ){
 }
 
 var dealWithHands = function(handsArr){
-  if ((handsArr.length == 2) && !flying && !armed && activeGestures.circle){
-    console.log('ARMING');
-    armed = true; 
+  if ((handsArr.length == 2) && !flying && !armed && activeGestures.circle && !armed){
+    armed = true;
+    charm.position(0,40).erase('line').write('ARMED.');
   }
 
   // if you're holding a closed fist when flying, stop the drone.
